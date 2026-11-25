@@ -1,0 +1,24 @@
+# Own table only: Nord rebuilds its "inet nordvpn" table on every connect.
+- name: Install nft rules
+  ansible.builtin.copy:
+    src: nordvpn-tailscale-bypass.nft
+    dest: /etc/nordvpn-tailscale-bypass.nft
+    mode: "0644"
+  notify: Restart nordvpn-tailscale-bypass
+
+- name: Install the bypass unit
+  ansible.builtin.copy:
+    src: nordvpn-tailscale-bypass.service
+    dest: /etc/systemd/system/nordvpn-tailscale-bypass.service
+    mode: "0644"
+  notify: Restart nordvpn-tailscale-bypass
+
+- name: Enable and start the bypass unit
+  ansible.builtin.systemd_service:
+    name: nordvpn-tailscale-bypass
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Apply rule changes before Tailscale and Nord touch the network
+  ansible.builtin.meta: flush_handlers

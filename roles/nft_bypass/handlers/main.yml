@@ -1,0 +1,5 @@
+- name: Restart nordvpn-tailscale-bypass
+  ansible.builtin.systemd_service:
+    name: nordvpn-tailscale-bypass
+    state: restarted
+    daemon_reload: true

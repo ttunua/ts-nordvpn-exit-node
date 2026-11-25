@@ -1,0 +1,26 @@
+- name: Page directory
+  ansible.builtin.file:
+    path: /opt/nordvpn-page
+    state: directory
+    mode: "0755"
+
+- name: Install the page
+  ansible.builtin.copy:
+    src: nordvpn_page.py
+    dest: /opt/nordvpn-page/nordvpn_page.py
+    mode: "0755"
+  notify: Restart nordvpn-page
+
+- name: Install the unit
+  ansible.builtin.template:
+    src: nordvpn-page.service.j2
+    dest: /etc/systemd/system/nordvpn-page.service
+    mode: "0644"
+  notify: Restart nordvpn-page
+
+- name: Enable and start the page
+  ansible.builtin.systemd_service:
+    name: nordvpn-page
+    enabled: true
+    state: started
+    daemon_reload: true

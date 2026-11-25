@@ -1,0 +1,12 @@
+# Copy to inventory.yml (gitignored) and edit.
+all:
+  children:
+    nord_exit:
+      hosts:
+        nord-exit:                         # becomes the Tailscale hostname unless you set ts_hostname
+          ansible_host: 192.168.1.50       # IP or DNS name of your Debian machine
+          lan_cidr: 192.168.1.0/24         # your LAN
+          # nord_user: debian              # login user with passwordless sudo
+          # ansible_ssh_private_key_file: ~/.ssh/id_ed25519
+          # lan_iface: eth0                # check with: ip -br link
+          # install_guest_agent: true      # on a KVM/Proxmox VM

@@ -1,0 +1,28 @@
+# Generic defaults. Put anything specific to your machine or network in inventory.yml.
+
+# Login user on the Debian machine; it runs the nordvpn CLI and the switcher page.
+nord_user: debian
+
+# Tailscale
+ts_hostname: "{{ inventory_hostname }}"
+ts_tag: tag:nord-exit          # must be in your tailnet policy's tagOwners
+tailnet_cidr: 100.64.0.0/10
+
+# Debian codename, for the Tailscale apt repo
+debian_release: trixie
+
+# Your LAN, so NordVPN doesn't cut you off from the machine. Override in inventory.yml.
+lan_cidr: 192.168.1.0/24
+
+# Network interface for UDP GRO forwarding (see docs/Performance.md)
+lan_iface: eth0
+
+page_port: 8080
+install_guest_agent: false     # true on a KVM/Proxmox VM
+
+# Tailscale CLI on the machine you run check.yml from (for --tags exit-test)
+ts_cli: /Applications/Tailscale.app/Contents/MacOS/Tailscale
+
+# Secrets come from group_vars/nord_exit/vault.yml; empty means "use the manual login fallback".
+tailscale_authkey: "{{ vault_tailscale_authkey | default('') }}"
+nordvpn_token: "{{ vault_nordvpn_token | default('') }}"

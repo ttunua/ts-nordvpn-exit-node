@@ -1,0 +1,122 @@
+# Same repo and key as Nord's own install.sh (https://downloads.nordcdn.com/apps/linux/install.sh).
+- name: NordVPN apt key
+  ansible.builtin.get_url:
+    url: https://repo.nordvpn.com/gpg/nordvpn_public.asc
+    dest: /etc/apt/trusted.gpg.d/nordvpn_public.asc
+    mode: "0644"
+
+- name: NordVPN apt repo
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/nordvpn-app.list
+    content: "deb https://repo.nordvpn.com/deb/nordvpn/debian stable main\n"
+    mode: "0644"
+  register: nord_repo
+
+- name: Install nordvpn
+  ansible.builtin.apt:
+    name: nordvpn
+    update_cache: "{{ nord_repo.changed }}"
+
+- name: Enable nordvpnd
+  ansible.builtin.systemd_service:
+    name: nordvpnd
+    enabled: true
+    state: started
+
+- name: Let {{ nord_user }} use the nordvpn CLI
+  ansible.builtin.user:
+    name: "{{ nord_user }}"
+    groups: nordvpn
+    append: true
+
+# Ansible's SSH session as {{ nord_user }} was opened before it joined the group, and a running
+# session never gets new groups. Nord then answers "Permission denied ... usermod -aG nordvpn".
+# Reconnect so the commands below run in a session that has the group.
+- name: Reconnect so the new group membership applies
+  ansible.builtin.meta: reset_connection
+
+- name: NordVPN as {{ nord_user }}
+  become_user: "{{ nord_user }}"
+  block:
+    # Short retry in case nordvpnd is still starting after a fresh install.
+    - name: Read settings
+      ansible.builtin.command: nordvpn settings
+      register: nord_settings
+      check_mode: false
+      changed_when: false
+      until: nord_settings.rc == 0
+      retries: 5
+      delay: 3
+
+    - name: Turn off analytics (also answers the first-run consent question)
+      ansible.builtin.command: nordvpn set analytics off
+      when: "'User Consent: disabled' not in nord_settings.stdout"
+
+    - name: Allowlist the LAN and the tailnet
+      ansible.builtin.command: nordvpn allowlist add subnet {{ item }}
+      loop: ["{{ lan_cidr }}", "{{ tailnet_cidr }}"]
+      when: item not in nord_settings.stdout
+
+    - name: Allowlist Tailscale's UDP port
+      ansible.builtin.command: nordvpn allowlist add port 41641 protocol UDP
+      when: "'41641 (UDP)' not in nord_settings.stdout"
+
+    - name: Kill switch off (it would block the LAN and tailnet if Nord drops)
+      ansible.builtin.command: nordvpn set killswitch off
+      when: "'Kill Switch: enabled' in nord_settings.stdout"
+
+    - name: Protocol must be NordLynx (6.x has no 'set technology')
+      ansible.builtin.assert:
+        that: "'Protocol: NordLynx' in nord_settings.stdout"
+        fail_msg: "Expected Protocol: NordLynx in 'nordvpn settings'."
+
+    - name: Check login
+      ansible.builtin.command: nordvpn account
+      register: nord_account
+      check_mode: false
+      changed_when: false
+      failed_when: false
+
+    - name: Note whether we're logged in
+      ansible.builtin.set_fact:
+        nord_logged_in: "{{ nord_account.rc == 0 and 'Account information' in nord_account.stdout }}"
+
+    # 6.x only takes the token as an argument (or a TTY prompt), so it's briefly in argv.
+    - name: Log in with the token
+      ansible.builtin.command: nordvpn login --token {{ nordvpn_token }}
+      no_log: true
+      when: not nord_logged_in and nordvpn_token | length > 0
+
+    - name: No token - explain the browser login
+      ansible.builtin.fail:
+        msg: >-
+          No vault_nordvpn_token. On the VM run 'nordvpn login', open the link, copy the
+          nordvpn:// link it ends on, run nordvpn login --callback "<link>", then run the playbook again.
+      when: not nord_logged_in and nordvpn_token | length == 0
+
+    - name: Auto-connect on (no country = fastest)
+      ansible.builtin.command: nordvpn set autoconnect on
+      when: "'Auto-connect: enabled' not in nord_settings.stdout"
+
+    - name: Read status
+      ansible.builtin.command: nordvpn status
+      register: nord_status
+      check_mode: false
+      changed_when: false
+
+# In a transient unit so a dropped SSH session can't leave it half-connected.
+- name: Connect to the fastest server
+  ansible.builtin.command: >-
+    systemd-run --unit=nord-connect --collect --uid={{ nord_user }}
+    -p SupplementaryGroups=nordvpn nordvpn connect
+  when: "'Status: Connected' not in nord_status.stdout"
+
+- name: Wait until connected
+  become_user: "{{ nord_user }}"
+  ansible.builtin.command: nordvpn status
+  register: nord_wait
+  check_mode: false
+  until: "'Status: Connected' in nord_wait.stdout"
+  retries: 30
+  delay: 3
+  changed_when: false

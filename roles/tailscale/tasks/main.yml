@@ -1,0 +1,86 @@
+- name: Tailscale apt key
+  ansible.builtin.get_url:
+    url: https://pkgs.tailscale.com/stable/debian/{{ debian_release }}.noarmor.gpg
+    dest: /usr/share/keyrings/tailscale-archive-keyring.gpg
+    mode: "0644"
+
+- name: Tailscale apt repo
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/tailscale.list
+    content: "deb [signed-by=/usr/share/keyrings/tailscale-archive-keyring.gpg] https://pkgs.tailscale.com/stable/debian {{ debian_release }} main\n"
+    mode: "0644"
+  register: ts_repo
+
+- name: Install tailscale
+  ansible.builtin.apt:
+    name: tailscale
+    update_cache: "{{ ts_repo.changed }}"
+
+- name: Turn on IP forwarding (exit node)
+  ansible.builtin.copy:
+    dest: /etc/sysctl.d/99-tailscale.conf
+    content: "net.ipv4.ip_forward = 1\nnet.ipv6.conf.all.forwarding = 1\n"
+    mode: "0644"
+  notify: Apply sysctl
+
+- name: Apply forwarding now
+  ansible.builtin.meta: flush_handlers
+
+- name: Enable tailscaled
+  ansible.builtin.systemd_service:
+    name: tailscaled
+    enabled: true
+    state: started
+
+- name: Read Tailscale state
+  ansible.builtin.command: tailscale status --json
+  register: ts_status
+  check_mode: false
+  changed_when: false
+  failed_when: false
+
+- name: Note whether the node is joined
+  ansible.builtin.set_fact:
+    ts_running: "{{ ts_status.rc == 0 and (ts_status.stdout | from_json).BackendState == 'Running' }}"
+
+- name: Join the tailnet with the auth key
+  ansible.builtin.command: >-
+    tailscale up --authkey={{ tailscale_authkey }} --hostname={{ ts_hostname }}
+    --advertise-exit-node --advertise-tags={{ ts_tag }} --accept-dns=false
+  no_log: true
+  when: not ts_running and tailscale_authkey | length > 0
+
+- name: No auth key - get a login link instead
+  when: not ts_running and tailscale_authkey | length == 0
+  block:
+    - name: Start tailscale up in the background
+      ansible.builtin.shell: |
+        systemctl reset-failed ts-up 2>/dev/null || true
+        systemd-run --unit=ts-up --collect tailscale up --hostname={{ ts_hostname }} \
+          --advertise-exit-node --advertise-tags={{ ts_tag }} --accept-dns=false
+        for i in $(seq 1 15); do
+          url=$(journalctl -u ts-up --no-pager -o cat | grep -Eo 'https://login.tailscale.com/[^ ]+' | tail -1)
+          [ -n "$url" ] && { echo "$url"; exit 0; }
+          sleep 1
+        done
+        exit 1
+      register: ts_url
+      changed_when: true
+
+    - name: Stop here until you've logged in
+      ansible.builtin.fail:
+        msg: "No vault_tailscale_authkey. Open {{ ts_url.stdout }} to add {{ ts_hostname }} to the tailnet, then run the playbook again."
+
+- name: Read Tailscale prefs
+  ansible.builtin.command: tailscale debug prefs
+  register: ts_prefs
+  check_mode: false
+  changed_when: false
+  when: ts_running
+
+- name: Make sure it still advertises the exit node under the right name
+  ansible.builtin.command: tailscale set --advertise-exit-node --hostname={{ ts_hostname }}
+  when:
+    - ts_running
+    - ('0.0.0.0/0' not in ((ts_prefs.stdout | from_json).AdvertiseRoutes | default([]) or [])) or
+      ((ts_prefs.stdout | from_json).Hostname | default('') != ts_hostname)

@@ -1,0 +1,30 @@
+# Turns an existing Debian machine into a Tailscale exit node whose traffic leaves
+# through the NordVPN app. Safe to rerun. See docs/Setup.md.
+- name: Tailscale exit node through NordVPN
+  hosts: nord_exit
+  gather_facts: false
+  become: true
+  pre_tasks:
+    - name: Wait for SSH
+      ansible.builtin.wait_for_connection:
+        timeout: 300
+
+    - name: Is cloud-init installed?
+      ansible.builtin.stat:
+        path: /usr/bin/cloud-init
+      register: cloud_init_bin
+
+    - name: Wait for cloud-init to finish (fresh cloud images)
+      ansible.builtin.command: cloud-init status --wait
+      register: cloud_init
+      check_mode: false
+      changed_when: false
+      failed_when: cloud_init.rc not in [0, 2]  # 2 = done with recoverable warnings
+      when: cloud_init_bin.stat.exists
+  roles:
+    - base
+    - tuning        # UDP GRO forwarding for exit-node throughput
+    - nft_bypass    # before Nord connects, or Tailscale loses its relays and control plane
+    - tailscale
+    - nordvpn
+    - switcher_page

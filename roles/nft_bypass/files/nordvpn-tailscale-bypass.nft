@@ -1,0 +1,17 @@
+#!/usr/sbin/nft -f
+# Let tailscaled's own traffic (control plane, DERP relays, STUN) past the
+# NordVPN Linux app's firewall.
+#
+# tailscaled marks its sockets with fwmark 0x80000 so they bypass the tunnel.
+# NordVPN 6.x's "inet nordvpn" output chain has policy drop and only accepts
+# packets marked 0xe1f1 (plus lo, allowlisted subnets/ports and nordlynx).
+# This chain runs just before Nord's and swaps Tailscale's mark for Nord's.
+# Forwarded exit-node traffic is unmarked, so it still goes through nordlynx.
+table inet nordvpn_tailscale_bypass
+delete table inet nordvpn_tailscale_bypass
+table inet nordvpn_tailscale_bypass {
+	chain output {
+		type route hook output priority mangle - 10; policy accept;
+		meta mark & 0x00ff0000 == 0x00080000 meta mark set 0x0000e1f1
+	}
+}

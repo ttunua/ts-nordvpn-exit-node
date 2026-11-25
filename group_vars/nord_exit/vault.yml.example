@@ -1,0 +1,4 @@
+# Create the real, encrypted file with: ansible-vault create group_vars/nord_exit/vault.yml
+# (vault.yml is gitignored in this repo.)
+vault_nordvpn_token: "replace-with-nordvpn-access-token"
+vault_tailscale_authkey: "tskey-auth-replace-me"

@@ -1,0 +1,16 @@
+[Unit]
+Description=NordVPN country switcher page (tailnet only)
+After=tailscaled.service nordvpnd.service network-online.target
+Wants=network-online.target
+
+[Service]
+# Must be a user in the nordvpn group.
+User={{ nord_user }}
+Environment=PORT={{ page_port }}
+ExecStart=/usr/bin/python3 /opt/nordvpn-page/nordvpn_page.py
+# Retries until tailscale has an IP after boot.
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

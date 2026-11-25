@@ -1,0 +1,5 @@
+- name: Restart udp-gro-forwarding
+  ansible.builtin.systemd_service:
+    name: udp-gro-forwarding
+    state: restarted
+    daemon_reload: true

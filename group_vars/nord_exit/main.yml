@@ -1,0 +1,3 @@
+ansible_user: "{{ nord_user }}"
+ansible_ssh_common_args: "-o StrictHostKeyChecking=accept-new"
+ansible_become: true

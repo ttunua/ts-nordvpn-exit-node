@@ -1,0 +1,5 @@
+inventory.yml
+group_vars/nord_exit/vault.yml
+ansible.log
+*.retry
+__pycache__/

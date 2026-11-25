@@ -1,0 +1,83 @@
+# Health check: ansible-playbook check.yml --ask-vault-pass
+# Plus a real exit-node test from this machine: add --tags all,exit-test
+- name: Check the exit node
+  hosts: nord_exit
+  gather_facts: false
+  become: true
+  tasks:
+    - name: Services are running
+      ansible.builtin.command: systemctl is-active nordvpn-tailscale-bypass tailscaled nordvpnd nordvpn-page
+      changed_when: false
+
+    - name: Bypass table is loaded
+      ansible.builtin.command: nft list table inet nordvpn_tailscale_bypass
+      changed_when: false
+
+    - name: Tailscale is joined with no health warnings
+      ansible.builtin.command: tailscale status --json
+      register: ts
+      changed_when: false
+      failed_when: >-
+        (ts.stdout | from_json).BackendState != 'Running' or
+        ((ts.stdout | from_json).Health | default([]) or []) | length > 0
+
+    - name: Nord is logged in
+      become_user: "{{ nord_user }}"
+      ansible.builtin.command: nordvpn account
+      register: acct
+      changed_when: false
+      failed_when: acct.rc != 0 or 'Account information' not in acct.stdout
+
+    - name: Nord is connected
+      become_user: "{{ nord_user }}"
+      ansible.builtin.command: nordvpn status
+      register: st
+      changed_when: false
+      failed_when: "'Status: Connected' not in st.stdout"
+
+    - name: Show the server
+      ansible.builtin.debug:
+        msg: "{{ st.stdout_lines | select('match', '^(Server|Country|City):') | list }}"
+
+- name: Check from this machine
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    exit_host: "{{ groups['nord_exit'] | first }}"
+    exit_name: "{{ hostvars[exit_host].ts_hostname }}"
+  tasks:
+    - name: Country switcher page answers
+      ansible.builtin.uri:
+        url: "http://{{ exit_name }}:{{ page_port }}/"
+        status_code: 200
+
+    - name: Exit-node test (switches this machine's exit node, then back to none)
+      tags: [never, exit-test]
+      block:
+        - name: Public IP without the exit node
+          ansible.builtin.uri:
+            url: https://ipinfo.io/json
+          register: ip_before
+
+        - name: Use the exit node
+          ansible.builtin.command: "{{ ts_cli }} set --exit-node={{ exit_name }}"
+          changed_when: true
+
+        - name: Public IP through the exit node
+          ansible.builtin.uri:
+            url: https://ipinfo.io/json
+            return_content: true
+          register: ipinfo
+          retries: 3
+          delay: 3
+          until: ipinfo is succeeded
+
+        - name: The public IP changed
+          ansible.builtin.assert:
+            that: ipinfo.json.ip != ip_before.json.ip
+            success_msg: "Exit IP {{ ipinfo.json.ip }} ({{ ipinfo.json.org }}, {{ ipinfo.json.city }})"
+      always:
+        - name: Back to no exit node
+          ansible.builtin.command: "{{ ts_cli }} set --exit-node="
+          changed_when: true

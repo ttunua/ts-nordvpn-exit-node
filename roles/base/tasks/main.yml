@@ -1,0 +1,21 @@
+- name: Full upgrade
+  ansible.builtin.apt:
+    update_cache: true
+    upgrade: full
+
+- name: Install base packages
+  ansible.builtin.apt:
+    name: [curl, gnupg, nftables]
+
+- name: QEMU guest agent (only useful on a KVM/Proxmox VM)
+  when: install_guest_agent | bool
+  block:
+    - name: Install qemu-guest-agent
+      ansible.builtin.apt:
+        name: qemu-guest-agent
+
+    - name: Enable and start qemu-guest-agent
+      ansible.builtin.systemd_service:
+        name: qemu-guest-agent
+        enabled: true
+        state: started
