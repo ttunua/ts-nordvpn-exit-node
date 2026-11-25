@@ -1,0 +1,13 @@
+[Unit]
+Description=Let Tailscale control/DERP traffic bypass the NordVPN firewall
+Before=tailscaled.service nordvpnd.service
+After=network-pre.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/nft -f /etc/nordvpn-tailscale-bypass.nft
+ExecStop=/usr/sbin/nft delete table inet nordvpn_tailscale_bypass
+
+[Install]
+WantedBy=multi-user.target
