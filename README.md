@@ -52,6 +52,8 @@ Tested with Debian 13 (trixie), NordVPN 6.1.0 and Tailscale 1.104, on a KVM VM. 
    ```
 5. **Use it:** choose the exit node on your devices. Switch country at `http://<hostname>:8080/`.
 
+<img src="docs/img/switcher-page.png" width="300" alt="The country switcher page on a phone: NordVPN status (connected to Australia, Sydney, NordLynx) above buttons for Fastest, six countries and Disconnect">
+
 Without secrets in the vault, the run stops at each login and tells you how to finish it by hand.
 
 `inventory.yml`, `group_vars/nord_exit/vault.yml` and `ansible.log` are gitignored, so your details stay out of your fork.
