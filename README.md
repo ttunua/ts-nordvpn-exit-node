@@ -4,6 +4,27 @@ Turn a Debian machine into a **Tailscale exit node whose internet traffic leaves
 
 It uses the official NordVPN Linux app (NordLynx), so switching country is one command, or one tap on the included web page.
 
+```mermaid
+flowchart LR
+  device["Your device<br/>phone or laptop<br/>exit node set to this machine"]
+
+  subgraph exit["Exit node (Debian)"]
+    ts["tailscaled<br/>tailscale0"]
+    nord["NordVPN app<br/>nordlynx"]
+    page["nordvpn_page.py<br/>status page and country switcher<br/>port 8080, Tailscale IP only"]
+  end
+
+  server["NordVPN server<br/>chosen country"]
+  internet(("Internet"))
+
+  device -- "all traffic, over Tailscale" --> ts
+  ts -- "forwarded" --> nord
+  nord -- "NordLynx tunnel" --> server
+  server --> internet
+  device -. "browser: http://hostname:8080" .-> page
+  page -- "nordvpn status / connect / disconnect" --> nord
+```
+
 The one non-obvious part is a **firewall clash**. NordVPN's app drops Tailscale's own connections to its relays and coordination server. This repo fixes that with a six-line nftables rule, without turning NordVPN's firewall off. See [docs/Firewall.md](docs/Firewall.md).
 
 ## Two ways to use it
