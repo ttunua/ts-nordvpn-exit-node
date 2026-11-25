@@ -6,12 +6,12 @@ It uses the official NordVPN Linux app (NordLynx), so switching country is one c
 
 ```mermaid
 flowchart LR
-  device["Your device<br/>phone or laptop<br/>exit node set to this machine"]
+  device["Your device<br/>phone or laptop"]
 
   subgraph exit["Exit node (Debian)"]
-    ts["tailscaled<br/>tailscale0"]
-    nord["NordVPN app<br/>nordlynx"]
-    page["nordvpn_page.py<br/>status page and country switcher<br/>port 8080, Tailscale IP only"]
+    ts["tailscaled"]
+    nord["NordVPN app"]
+    page["Status page<br/>port 8080"]
   end
 
   server["NordVPN server<br/>chosen country"]
@@ -21,9 +21,11 @@ flowchart LR
   ts -- "forwarded" --> nord
   nord -- "NordLynx tunnel" --> server
   server --> internet
-  device -. "browser: http://hostname:8080" .-> page
+  device -. "browser" .-> page
   page -- "nordvpn status / connect / disconnect" --> nord
 ```
+
+Your device uses the machine as its Tailscale exit node. The status page is `nordvpn_page.py` at `http://<hostname>:8080/`, and it listens only on the machine's Tailscale IP.
 
 The one non-obvious part is a **firewall clash**. NordVPN's app drops Tailscale's own connections to its relays and coordination server. This repo fixes that with a six-line nftables rule, without turning NordVPN's firewall off. See [docs/Firewall.md](docs/Firewall.md).
 
